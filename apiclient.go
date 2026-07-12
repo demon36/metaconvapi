@@ -197,8 +197,7 @@ func (c *MetaCAClient) SendTestEvent(userEmail string, userPhone string, eventId
 func (c *MetaCAClient) SendAddToCartEvent(
 	userID, email, phone string,
 	req *http.Request,
-	productID string, quantity int, price float64,
-	consentAvail bool,
+	productID string, quantity int, consentAvail bool,
 ) error {
 	if !consentAvail {
 		return nil
@@ -217,10 +216,8 @@ func (c *MetaCAClient) SendAddToCartEvent(
 			ClientUserAgent: userAgent,
 		},
 		CustomData: MetaCustomData{
-			Currency: c.Currency,
-			Value:    price * float64(quantity),
 			Contents: []MetaContent{
-				{ID: productID, Quantity: quantity, Price: price},
+				{ID: productID, Quantity: quantity},
 			},
 		},
 	}
