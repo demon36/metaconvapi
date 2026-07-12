@@ -1,4 +1,4 @@
-package conversions
+package metaconvapi
 
 // MetaConversionEvent represents a single event to send to Meta
 type MetaConversionEvent struct {
