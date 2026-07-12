@@ -85,102 +85,33 @@ import (
 
 
 */
-// MetaConversionEvent represents a single event to send to Meta
-type MetaConversionEvent struct {
-	EventName             string         `json:"event_name"`
-	EventTime             int64          `json:"event_time"`
-	ActionSource          string         `json:"action_source"`
-	EventID               string         `json:"event_id,omitempty"`
-	UserData              MetaUserData   `json:"user_data"`
-	CustomData            MetaCustomData `json:"custom_data,omitempty"`
-	DataProcessingOptions []string       `json:"data_processing_options,omitempty"`
-}
-
-// MetaUserData contains hashed user identifiers
-type MetaUserData struct {
-	Em              string `json:"em,omitempty"` // hashed email
-	Ph              string `json:"ph,omitempty"` // hashed phone
-	ClientIPAddress string `json:"client_ip_address,omitempty"`
-	ClientUserAgent string `json:"client_user_agent,omitempty"`
-	Fbp             string `json:"fbp,omitempty"`
-	Fbc             string `json:"fbc,omitempty"`
-}
-
-// MetaCustomData contains event-specific parameters
-type MetaCustomData struct {
-	Currency string                 `json:"currency,omitempty"`
-	Value    float64                `json:"value,omitempty"`
-	Contents []MetaContent          `json:"contents,omitempty"`
-	OrderID  string                 `json:"order_id,omitempty"`
-	Extra    map[string]interface{} `json:"-"`
-}
-
-// MetaContent represents an item in the cart/purchase
-type MetaContent struct {
-	ID       string  `json:"id"`
-	Name     string  `json:"name"`
-	Quantity int     `json:"quantity"`
-	Price    float64 `json:"price,omitempty"`
-}
-
-// MetaCAPIRequest is the wrapper for the API call
-type MetaCAPIRequest struct {
-	Data []MetaConversionEvent `json:"data"`
-}
-
-// MetaCAPIResponse is the API response structure
-type MetaCAPIResponse struct {
-	EventsReceived int `json:"events_received"`
-	Messages       []struct {
-		Level   string `json:"level"`
-		Message string `json:"message"`
-	} `json:"messages,omitempty"`
-}
 
 // MetaCAClient handles communication with Meta Conversions API
 type MetaCAClient struct {
-	PixelID     string
-	AccessToken string
-	HTTPClient  *http.Client
+	PixelID      string
+	AccessToken  string
+	ActionSource string
+	Currency     string
+	HTTPClient   *http.Client
 }
 
 // NewMetaCAClient creates a new client instance
-func NewMetaCAClient(pixelID, accessToken string) *MetaCAClient {
+func NewMetaCAClient(pixelID, accessToken, actionSource, currency string, timeout time.Duration) *MetaCAClient {
 	return &MetaCAClient{
-		PixelID:     pixelID,
-		AccessToken: accessToken,
-		HTTPClient:  &http.Client{Timeout: 10 * time.Second},
+		PixelID:      pixelID,
+		AccessToken:  accessToken,
+		ActionSource: actionSource,
+		Currency:     currency,
+		HTTPClient:   &http.Client{Timeout: timeout},
 	}
 }
 
-func (c *MetaCAClient) SendTestEvent(userEmail string, userPhone string, req http.Request) error {
-	//TODO: event firing shouldn't fail, only log error and return void
+func extractIPAndUserAgent(req *http.Request) (string, string) {
 	ip, _, err := net.SplitHostPort(req.RemoteAddr)
 	if err != nil {
-		return err
+		ip = req.RemoteAddr
 	}
-	event := MetaConversionEvent{
-		EventName:    "TEST75302",
-		EventTime:    time.Now().Unix(),
-		ActionSource: "website",
-		EventID:      "TEST75302",
-		UserData: MetaUserData{
-			Em:              HashString(userEmail),
-			Ph:              HashString(userPhone),
-			ClientIPAddress: ip,
-			ClientUserAgent: req.UserAgent(),
-		},
-	}
-
-	// Send event
-	response, err := c.SendEvents([]MetaConversionEvent{event})
-	if err != nil {
-		log.Printf("Failed to send user action to Meta, error: %v\n", err)
-		return err
-	}
-
-	log.Printf("Events received by Meta: %d\n", response.EventsReceived)
-	return err
+	return ip, req.UserAgent()
 }
 
 // SendEvents sends events to Meta Conversions API
@@ -209,6 +140,7 @@ func (c *MetaCAClient) SendEvents(events []MetaConversionEvent) (*MetaCAPIRespon
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
+		log.Printf("HTTP request to Meta conversions API has failed: %v", err)
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
 	}
 	defer resp.Body.Close()
@@ -216,10 +148,12 @@ func (c *MetaCAClient) SendEvents(events []MetaConversionEvent) (*MetaCAPIRespon
 	// Parse response
 	var result MetaCAPIResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("failed to parse response from Meta conversions API: %v", err)
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		log.Printf("Meta conversions API error, req payload: %s (status %d): %+v", string(jsonPayload), resp.StatusCode, result)
 		return nil, fmt.Errorf("API error, req payload: %s (status %d): %+v", string(jsonPayload), resp.StatusCode, result)
 	}
 
@@ -235,15 +169,46 @@ func HashString(input string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-// BuildAddToCartEvent constructs an AddToCart event
-func BuildAddToCartEvent(
-	userID, email, phone, ip, userAgent string,
-	productID string, quantity int, price float64, currency string,
-) MetaConversionEvent {
-	return MetaConversionEvent{
+// SendTestEvent sends a test event
+func (c *MetaCAClient) SendTestEvent(userEmail string, userPhone string, eventId string, req *http.Request, consentAvail bool) error {
+	if !consentAvail {
+		return nil
+	}
+
+	ip, userAgent := extractIPAndUserAgent(req)
+	event := MetaConversionEvent{
+		EventName:    eventId,
+		EventTime:    time.Now().Unix(),
+		ActionSource: c.ActionSource,
+		UserData: MetaUserData{
+			Em:              HashString(userEmail),
+			Ph:              HashString(userPhone),
+			ClientIPAddress: ip,
+			ClientUserAgent: userAgent,
+		},
+	}
+
+	// Send event
+	_, err := c.SendEvents([]MetaConversionEvent{event})
+	return err
+}
+
+// SendAddToCartEvent builds and sends a single AddToCart event
+func (c *MetaCAClient) SendAddToCartEvent(
+	userID, email, phone string,
+	req *http.Request,
+	productID string, quantity int, price float64,
+	consentAvail bool,
+) error {
+	if !consentAvail {
+		return nil
+	}
+
+	ip, userAgent := extractIPAndUserAgent(req)
+	event := MetaConversionEvent{
 		EventName:    "AddToCart",
 		EventTime:    time.Now().Unix(),
-		ActionSource: "mobile_app",
+		ActionSource: c.ActionSource,
 		EventID:      fmt.Sprintf("addtocart_%d_%s", time.Now().UnixNano(), userID),
 		UserData: MetaUserData{
 			Em:              HashString(email),
@@ -252,24 +217,39 @@ func BuildAddToCartEvent(
 			ClientUserAgent: userAgent,
 		},
 		CustomData: MetaCustomData{
-			Currency: currency,
+			Currency: c.Currency,
 			Value:    price * float64(quantity),
 			Contents: []MetaContent{
 				{ID: productID, Quantity: quantity, Price: price},
 			},
 		},
 	}
+
+	_, err := c.SendEvents([]MetaConversionEvent{event})
+	if err != nil {
+		log.Printf("Failed to send AddToCart event to Meta, error: %v\n", err)
+		return err
+	}
+
+	return nil
 }
 
-// BuildPurchaseEvent constructs a Purchase event
-func BuildPurchaseEvent(
-	userID, email, phone, ip, userAgent, orderID string,
-	items []MetaContent, total float64, currency string,
-) MetaConversionEvent {
-	return MetaConversionEvent{
+// SendPurchaseEvent builds and sends a single Purchase event
+func (c *MetaCAClient) SendPurchaseEvent(
+	userID, email, phone, orderID string,
+	req *http.Request,
+	items []MetaContent, total float64,
+	consentAvail bool,
+) error {
+	if !consentAvail {
+		return nil
+	}
+
+	ip, userAgent := extractIPAndUserAgent(req)
+	event := MetaConversionEvent{
 		EventName:    "Purchase",
 		EventTime:    time.Now().Unix(),
-		ActionSource: "mobile_app",
+		ActionSource: c.ActionSource,
 		EventID:      fmt.Sprintf("purchase_%s", orderID),
 		UserData: MetaUserData{
 			Em:              HashString(email),
@@ -278,22 +258,38 @@ func BuildPurchaseEvent(
 			ClientUserAgent: userAgent,
 		},
 		CustomData: MetaCustomData{
-			Currency: currency,
+			Currency: c.Currency,
 			Value:    total,
 			OrderID:  orderID,
 			Contents: items,
 		},
 	}
+
+	_, err := c.SendEvents([]MetaConversionEvent{event})
+	if err != nil {
+		log.Printf("Failed to send Purchase event to Meta, error: %v\n", err)
+		return err
+	}
+
+	return nil
 }
 
-// BuildPageViewEvent constructs a PageView event
-func BuildPageViewEvent(
-	userID, email, ip, userAgent, pageURL string,
-) MetaConversionEvent {
-	return MetaConversionEvent{
+// SendPageViewEvent builds and sends a single PageView event
+func (c *MetaCAClient) SendPageViewEvent(
+	userID, email string,
+	req *http.Request,
+	pageURL string,
+	consentAvail bool,
+) error {
+	if !consentAvail {
+		return nil
+	}
+
+	ip, userAgent := extractIPAndUserAgent(req)
+	event := MetaConversionEvent{
 		EventName:    "PageView",
 		EventTime:    time.Now().Unix(),
-		ActionSource: "mobile_app",
+		ActionSource: c.ActionSource,
 		EventID:      fmt.Sprintf("pageview_%d_%s", time.Now().UnixNano(), userID),
 		UserData: MetaUserData{
 			Em:              HashString(email),
@@ -306,29 +302,91 @@ func BuildPageViewEvent(
 			},
 		},
 	}
-}
 
-// Example usage
-func (c *MetaCAClient) test() {
-	// Build event
-	event := BuildAddToCartEvent(
-		"user123",          // userID
-		"user@example.com", // email
-		"+20123456789",     // phone
-		"192.168.1.1",      // IP
-		"Mozilla/5.0...",   // UserAgent
-		"product_456",      // productID
-		2,                  // quantity
-		29.99,              // price
-		"USD",              // currency
-	)
-
-	// Send event
-	response, err := c.SendEvents([]MetaConversionEvent{event})
+	_, err := c.SendEvents([]MetaConversionEvent{event})
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
+		log.Printf("Failed to send PageView event to Meta, error: %v\n", err)
+		return err
 	}
 
-	fmt.Printf("Events received: %d\n", response.EventsReceived)
+	return nil
+}
+
+// SendViewContentEvent builds and sends a single ViewContent event
+func (c *MetaCAClient) SendViewContentEvent(
+	userID, email, phone string,
+	req *http.Request,
+	contentCategory, contentName string,
+	consentAvail bool,
+) error {
+	if !consentAvail {
+		return nil
+	}
+
+	ip, userAgent := extractIPAndUserAgent(req)
+	event := MetaConversionEvent{
+		EventName:    "ViewContent",
+		EventTime:    time.Now().Unix(),
+		ActionSource: c.ActionSource,
+		EventID:      fmt.Sprintf("viewcontent_%d_%s", time.Now().UnixNano(), userID),
+		UserData: MetaUserData{
+			Em:              HashString(email),
+			Ph:              HashString(phone),
+			ClientIPAddress: ip,
+			ClientUserAgent: userAgent,
+		},
+		CustomData: MetaCustomData{
+			Extra: map[string]interface{}{
+				"content_category": contentCategory,
+				"content_name":     contentName,
+			},
+		},
+	}
+
+	_, err := c.SendEvents([]MetaConversionEvent{event})
+	if err != nil {
+		log.Printf("Failed to send ViewContent event to Meta, error: %v\n", err)
+		return err
+	}
+
+	return nil
+}
+
+// SendSearchEvent builds and sends a single Search event
+func (c *MetaCAClient) SendSearchEvent(
+	userID, email, phone string,
+	req *http.Request,
+	searchString string,
+	consentAvail bool,
+) error {
+	if !consentAvail {
+		return nil
+	}
+
+	ip, userAgent := extractIPAndUserAgent(req)
+	event := MetaConversionEvent{
+		EventName:    "Search",
+		EventTime:    time.Now().Unix(),
+		ActionSource: c.ActionSource,
+		EventID:      fmt.Sprintf("search_%d_%s", time.Now().UnixNano(), userID),
+		UserData: MetaUserData{
+			Em:              HashString(email),
+			Ph:              HashString(phone),
+			ClientIPAddress: ip,
+			ClientUserAgent: userAgent,
+		},
+		CustomData: MetaCustomData{
+			Extra: map[string]interface{}{
+				"search_string": searchString,
+			},
+		},
+	}
+
+	_, err := c.SendEvents([]MetaConversionEvent{event})
+	if err != nil {
+		log.Printf("Failed to send Search event to Meta, error: %v\n", err)
+		return err
+	}
+
+	return nil
 }
