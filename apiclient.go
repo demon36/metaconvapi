@@ -162,27 +162,21 @@ func HashString(input string) string {
 
 // rawUserDataToMetaUserData converts RawUserData to MetaUserData, hashing email and phone
 func rawUserDataToMetaUserData(raw RawUserData) MetaUserData {
-	userData := MetaUserData{}
-
-	if raw.Email != nil {
-		userData.Em = HashString(*raw.Email)
-	}
-	if raw.Phone != nil {
-		userData.Ph = HashString(*raw.Phone)
+	userData := MetaUserData{
+		ClientIPAddress: raw.ClientIP,
+		ClientUserAgent: raw.UserAgent,
 	}
 
-	userData.ClientIPAddress = raw.ClientIP
-	userData.ClientUserAgent = raw.UserAgent
+	if raw.Email != "" {
+		userData.Em = HashString(raw.Email)
+	}
+	if raw.Phone != "" {
+		userData.Ph = HashString(raw.Phone)
+	}
+
+	userData.ExternalId = raw.UserID
 
 	return userData
-}
-
-// generateEventID creates a unique event ID based on prefix and optional userID
-func generateEventID(prefix, userID string) string {
-	if userID != "" {
-		return fmt.Sprintf("%s_%d_%s", prefix, time.Now().UnixNano(), userID)
-	}
-	return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
 }
 
 // SendTestEvent sends a test event
@@ -212,16 +206,10 @@ func (c *MetaCAClient) SendAddToCartEvent(
 		return nil
 	}
 
-	var userID string
-	if userData.UserID != nil {
-		userID = *userData.UserID
-	}
-
 	event := MetaConversionEvent{
 		EventName:    "AddToCart",
 		EventTime:    time.Now().Unix(),
 		ActionSource: c.ActionSource,
-		EventID:      generateEventID("addtocart", userID),
 		UserData:     rawUserDataToMetaUserData(userData),
 		CustomData: MetaCustomData{
 			Contents: []MetaContent{
@@ -253,7 +241,6 @@ func (c *MetaCAClient) SendPurchaseEvent(
 		EventName:    "Purchase",
 		EventTime:    time.Now().Unix(),
 		ActionSource: c.ActionSource,
-		EventID:      fmt.Sprintf("purchase_%s", orderID),
 		UserData:     rawUserDataToMetaUserData(userData),
 		CustomData: MetaCustomData{
 			Currency: c.Currency,
@@ -281,16 +268,10 @@ func (c *MetaCAClient) SendPageViewEvent(
 		return nil
 	}
 
-	var userID string
-	if userData.UserID != nil {
-		userID = *userData.UserID
-	}
-
 	event := MetaConversionEvent{
 		EventName:    "PageView",
 		EventTime:    time.Now().Unix(),
 		ActionSource: c.ActionSource,
-		EventID:      generateEventID("pageview", userID),
 		UserData:     rawUserDataToMetaUserData(userData),
 		CustomData: MetaCustomData{
 			Extra: map[string]interface{}{
@@ -317,16 +298,10 @@ func (c *MetaCAClient) SendViewContentEvent(
 		return nil
 	}
 
-	var userID string
-	if userData.UserID != nil {
-		userID = *userData.UserID
-	}
-
 	event := MetaConversionEvent{
 		EventName:    "ViewContent",
 		EventTime:    time.Now().Unix(),
 		ActionSource: c.ActionSource,
-		EventID:      generateEventID("viewcontent", userID),
 		UserData:     rawUserDataToMetaUserData(userData),
 		CustomData: MetaCustomData{
 			Extra: map[string]interface{}{
@@ -353,16 +328,10 @@ func (c *MetaCAClient) SendSearchEvent(
 		return nil
 	}
 
-	var userID string
-	if userData.UserID != nil {
-		userID = *userData.UserID
-	}
-
 	event := MetaConversionEvent{
 		EventName:    "Search",
 		EventTime:    time.Now().Unix(),
 		ActionSource: c.ActionSource,
-		EventID:      generateEventID("search", userID),
 		UserData:     rawUserDataToMetaUserData(userData),
 		CustomData: MetaCustomData{
 			Extra: map[string]interface{}{

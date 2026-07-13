@@ -5,7 +5,6 @@ type MetaConversionEvent struct {
 	EventName             string         `json:"event_name"`
 	EventTime             int64          `json:"event_time"`
 	ActionSource          string         `json:"action_source"`
-	EventID               string         `json:"event_id,omitempty"`
 	UserData              MetaUserData   `json:"user_data"`
 	CustomData            MetaCustomData `json:"custom_data,omitempty"`
 	DataProcessingOptions []string       `json:"data_processing_options,omitempty"`
@@ -15,6 +14,7 @@ type MetaConversionEvent struct {
 type MetaUserData struct {
 	Em              string `json:"em,omitempty"` // hashed email
 	Ph              string `json:"ph,omitempty"` // hashed phone
+	ExternalId      string `json:"external_id,omitempty"`
 	ClientIPAddress string `json:"client_ip_address,omitempty"`
 	ClientUserAgent string `json:"client_user_agent,omitempty"`
 	Fbp             string `json:"fbp,omitempty"`
@@ -40,12 +40,12 @@ type MetaContent struct {
 
 // RawUserData contains optional user identifiers and context for event tracking
 type RawUserData struct {
-	UserID       *string `json:"user_id,omitempty"`
-	Email        *string `json:"email,omitempty"`
-	Phone        *string `json:"phone,omitempty"`
-	ClientIP     string  `json:"client_ip,omitempty"`
-	UserAgent    string  `json:"user_agent,omitempty"`
-	ConsentAvail bool    `json:"consent_avail,omitempty"`
+	UserID       string `json:"user_id,omitempty"`       // optional user identifier
+	Email        string `json:"email,omitempty"`         // optional email address
+	Phone        string `json:"phone,omitempty"`         // optional phone number
+	ClientIP     string `json:"client_ip,omitempty"`     // optional client IP address
+	UserAgent    string `json:"user_agent,omitempty"`    // optional user agent string
+	ConsentAvail bool   `json:"consent_avail,omitempty"` // optional consent availability flag
 }
 
 // MetaCAPIRequest is the wrapper for the API call
