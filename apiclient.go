@@ -169,23 +169,45 @@ func HashString(input string) string {
 	return hex.EncodeToString(hash[:])
 }
 
+// rawUserDataToMetaUserData converts RawUserData to MetaUserData, hashing email and phone
+func rawUserDataToMetaUserData(raw RawUserData) MetaUserData {
+	userData := MetaUserData{}
+
+	if raw.Email != nil {
+		userData.Em = HashString(*raw.Email)
+	}
+	if raw.Phone != nil {
+		userData.Ph = HashString(*raw.Phone)
+	}
+	if raw.ClientIP != nil {
+		userData.ClientIPAddress = *raw.ClientIP
+	}
+	if raw.UserAgent != nil {
+		userData.ClientUserAgent = *raw.UserAgent
+	}
+
+	return userData
+}
+
+// generateEventID creates a unique event ID based on prefix and optional userID
+func generateEventID(prefix, userID string) string {
+	if userID != "" {
+		return fmt.Sprintf("%s_%d_%s", prefix, time.Now().UnixNano(), userID)
+	}
+	return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
+}
+
 // SendTestEvent sends a test event
-func (c *MetaCAClient) SendTestEvent(userEmail string, userPhone string, eventId string, req *http.Request, consentAvail bool) error {
-	if !consentAvail {
+func (c *MetaCAClient) SendTestEvent(userData RawUserData, eventId string) error {
+	if !userData.ConsentAvail {
 		return nil
 	}
 
-	ip, userAgent := extractIPAndUserAgent(req)
 	event := MetaConversionEvent{
 		EventName:    eventId,
 		EventTime:    time.Now().Unix(),
 		ActionSource: c.ActionSource,
-		UserData: MetaUserData{
-			Em:              HashString(userEmail),
-			Ph:              HashString(userPhone),
-			ClientIPAddress: ip,
-			ClientUserAgent: userAgent,
-		},
+		UserData:     rawUserDataToMetaUserData(userData),
 	}
 
 	// Send event
@@ -195,26 +217,24 @@ func (c *MetaCAClient) SendTestEvent(userEmail string, userPhone string, eventId
 
 // SendAddToCartEvent builds and sends a single AddToCart event
 func (c *MetaCAClient) SendAddToCartEvent(
-	userID, email, phone string,
-	req *http.Request,
-	productName string, quantity int, consentAvail bool,
+	userData RawUserData,
+	productName string, quantity int,
 ) error {
-	if !consentAvail {
+	if !userData.ConsentAvail {
 		return nil
 	}
 
-	ip, userAgent := extractIPAndUserAgent(req)
+	var userID string
+	if userData.UserID != nil {
+		userID = *userData.UserID
+	}
+
 	event := MetaConversionEvent{
 		EventName:    "AddToCart",
 		EventTime:    time.Now().Unix(),
 		ActionSource: c.ActionSource,
-		EventID:      fmt.Sprintf("addtocart_%d_%s", time.Now().UnixNano(), userID),
-		UserData: MetaUserData{
-			Em:              HashString(email),
-			Ph:              HashString(phone),
-			ClientIPAddress: ip,
-			ClientUserAgent: userAgent,
-		},
+		EventID:      generateEventID("addtocart", userID),
+		UserData:     rawUserDataToMetaUserData(userData),
 		CustomData: MetaCustomData{
 			Contents: []MetaContent{
 				{Name: productName, Quantity: quantity},
@@ -233,27 +253,20 @@ func (c *MetaCAClient) SendAddToCartEvent(
 
 // SendPurchaseEvent builds and sends a single Purchase event
 func (c *MetaCAClient) SendPurchaseEvent(
-	userID, email, phone, orderID string,
-	req *http.Request,
+	userData RawUserData,
+	orderID string,
 	items []MetaContent, total float64,
-	consentAvail bool,
 ) error {
-	if !consentAvail {
+	if !userData.ConsentAvail {
 		return nil
 	}
 
-	ip, userAgent := extractIPAndUserAgent(req)
 	event := MetaConversionEvent{
 		EventName:    "Purchase",
 		EventTime:    time.Now().Unix(),
 		ActionSource: c.ActionSource,
 		EventID:      fmt.Sprintf("purchase_%s", orderID),
-		UserData: MetaUserData{
-			Em:              HashString(email),
-			Ph:              HashString(phone),
-			ClientIPAddress: ip,
-			ClientUserAgent: userAgent,
-		},
+		UserData:     rawUserDataToMetaUserData(userData),
 		CustomData: MetaCustomData{
 			Currency: c.Currency,
 			Value:    total,
@@ -273,26 +286,24 @@ func (c *MetaCAClient) SendPurchaseEvent(
 
 // SendPageViewEvent builds and sends a single PageView event
 func (c *MetaCAClient) SendPageViewEvent(
-	userID, email string,
-	req *http.Request,
+	userData RawUserData,
 	pageURL string,
-	consentAvail bool,
 ) error {
-	if !consentAvail {
+	if !userData.ConsentAvail {
 		return nil
 	}
 
-	ip, userAgent := extractIPAndUserAgent(req)
+	var userID string
+	if userData.UserID != nil {
+		userID = *userData.UserID
+	}
+
 	event := MetaConversionEvent{
 		EventName:    "PageView",
 		EventTime:    time.Now().Unix(),
 		ActionSource: c.ActionSource,
-		EventID:      fmt.Sprintf("pageview_%d_%s", time.Now().UnixNano(), userID),
-		UserData: MetaUserData{
-			Em:              HashString(email),
-			ClientIPAddress: ip,
-			ClientUserAgent: userAgent,
-		},
+		EventID:      generateEventID("pageview", userID),
+		UserData:     rawUserDataToMetaUserData(userData),
 		CustomData: MetaCustomData{
 			Extra: map[string]interface{}{
 				"page_url": pageURL,
@@ -311,26 +322,24 @@ func (c *MetaCAClient) SendPageViewEvent(
 
 // SendViewContentEvent builds and sends a single ViewContent event
 func (c *MetaCAClient) SendViewContentEvent(
-	userID, email, phone string,
-	req *http.Request, contentName string,
-	consentAvail bool,
+	userData RawUserData,
+	contentName string,
 ) error {
-	if !consentAvail {
+	if !userData.ConsentAvail {
 		return nil
 	}
 
-	ip, userAgent := extractIPAndUserAgent(req)
+	var userID string
+	if userData.UserID != nil {
+		userID = *userData.UserID
+	}
+
 	event := MetaConversionEvent{
 		EventName:    "ViewContent",
 		EventTime:    time.Now().Unix(),
 		ActionSource: c.ActionSource,
-		EventID:      fmt.Sprintf("viewcontent_%d_%s", time.Now().UnixNano(), userID),
-		UserData: MetaUserData{
-			Em:              HashString(email),
-			Ph:              HashString(phone),
-			ClientIPAddress: ip,
-			ClientUserAgent: userAgent,
-		},
+		EventID:      generateEventID("viewcontent", userID),
+		UserData:     rawUserDataToMetaUserData(userData),
 		CustomData: MetaCustomData{
 			Extra: map[string]interface{}{
 				"content_name": contentName,
@@ -349,27 +358,24 @@ func (c *MetaCAClient) SendViewContentEvent(
 
 // SendSearchEvent builds and sends a single Search event
 func (c *MetaCAClient) SendSearchEvent(
-	userID, email, phone string,
-	req *http.Request,
+	userData RawUserData,
 	searchString string,
-	consentAvail bool,
 ) error {
-	if !consentAvail {
+	if !userData.ConsentAvail {
 		return nil
 	}
 
-	ip, userAgent := extractIPAndUserAgent(req)
+	var userID string
+	if userData.UserID != nil {
+		userID = *userData.UserID
+	}
+
 	event := MetaConversionEvent{
 		EventName:    "Search",
 		EventTime:    time.Now().Unix(),
 		ActionSource: c.ActionSource,
-		EventID:      fmt.Sprintf("search_%d_%s", time.Now().UnixNano(), userID),
-		UserData: MetaUserData{
-			Em:              HashString(email),
-			Ph:              HashString(phone),
-			ClientIPAddress: ip,
-			ClientUserAgent: userAgent,
-		},
+		EventID:      generateEventID("search", userID),
+		UserData:     rawUserDataToMetaUserData(userData),
 		CustomData: MetaCustomData{
 			Extra: map[string]interface{}{
 				"search_string": searchString,
