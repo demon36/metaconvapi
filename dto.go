@@ -40,12 +40,12 @@ type MetaContent struct {
 
 // RawUserData contains optional user identifiers and context for event tracking
 type RawUserData struct {
-	UserID       *string `json:"user_id,omitempty"`       // optional user identifier (used for event ID generation)
-	Email        *string `json:"email,omitempty"`         // optional email address
-	Phone        *string `json:"phone,omitempty"`         // optional phone number
-	ClientIP     *string `json:"client_ip,omitempty"`     // optional client IP address
-	UserAgent    *string `json:"user_agent,omitempty"`    // optional user agent string
-	ConsentAvail bool    `json:"consent_avail,omitempty"` // optional consent availability flag
+	UserID       *string `json:"user_id,omitempty"`
+	Email        *string `json:"email,omitempty"`
+	Phone        *string `json:"phone,omitempty"`
+	ClientIP     string  `json:"client_ip,omitempty"`
+	UserAgent    string  `json:"user_agent,omitempty"`
+	ConsentAvail bool    `json:"consent_avail,omitempty"`
 }
 
 // MetaCAPIRequest is the wrapper for the API call

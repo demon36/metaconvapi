@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"time"
 )
@@ -106,14 +105,6 @@ func NewMetaCAClient(pixelID, accessToken, actionSource, currency string, timeou
 	}
 }
 
-func extractIPAndUserAgent(req *http.Request) (string, string) {
-	ip, _, err := net.SplitHostPort(req.RemoteAddr)
-	if err != nil {
-		ip = req.RemoteAddr
-	}
-	return ip, req.UserAgent()
-}
-
 // SendEvents sends events to Meta Conversions API
 func (c *MetaCAClient) SendEvents(events []MetaConversionEvent) (*MetaCAPIResponse, error) {
 	if len(events) == 0 {
@@ -179,12 +170,9 @@ func rawUserDataToMetaUserData(raw RawUserData) MetaUserData {
 	if raw.Phone != nil {
 		userData.Ph = HashString(*raw.Phone)
 	}
-	if raw.ClientIP != nil {
-		userData.ClientIPAddress = *raw.ClientIP
-	}
-	if raw.UserAgent != nil {
-		userData.ClientUserAgent = *raw.UserAgent
-	}
+
+	userData.ClientIPAddress = raw.ClientIP
+	userData.ClientUserAgent = raw.UserAgent
 
 	return userData
 }
