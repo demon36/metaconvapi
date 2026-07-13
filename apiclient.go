@@ -197,7 +197,7 @@ func (c *MetaCAClient) SendTestEvent(userEmail string, userPhone string, eventId
 func (c *MetaCAClient) SendAddToCartEvent(
 	userID, email, phone string,
 	req *http.Request,
-	productID string, quantity int, consentAvail bool,
+	productName string, quantity int, consentAvail bool,
 ) error {
 	if !consentAvail {
 		return nil
@@ -217,7 +217,7 @@ func (c *MetaCAClient) SendAddToCartEvent(
 		},
 		CustomData: MetaCustomData{
 			Contents: []MetaContent{
-				{ID: productID, Quantity: quantity},
+				{Name: productName, Quantity: quantity},
 			},
 		},
 	}
@@ -312,8 +312,7 @@ func (c *MetaCAClient) SendPageViewEvent(
 // SendViewContentEvent builds and sends a single ViewContent event
 func (c *MetaCAClient) SendViewContentEvent(
 	userID, email, phone string,
-	req *http.Request,
-	contentCategory, contentName string,
+	req *http.Request, contentName string,
 	consentAvail bool,
 ) error {
 	if !consentAvail {
@@ -334,8 +333,7 @@ func (c *MetaCAClient) SendViewContentEvent(
 		},
 		CustomData: MetaCustomData{
 			Extra: map[string]interface{}{
-				"content_category": contentCategory,
-				"content_name":     contentName,
+				"content_name": contentName,
 			},
 		},
 	}
